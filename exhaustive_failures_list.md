@@ -4,6 +4,8 @@ This document enumerates failure modes across the use case's block diagram and i
 
 Each item also carries a Disposition: whether the failure is new content this use case introduces, or a Pre-existing failure mode of a baseline module this use case carries forward unchanged, and whether the architecture already provides a mitigating or redundant path. A Pre-existing failure mode inherited from a baseline module's own analysis does not need to be re-derived here; it is retained in the list so the full picture stays visible in one place, with the inheritance stated rather than left implicit. Where a failure's classification genuinely depends on its root cause, it is split into separate items - one per causal path - rather than given a single ambiguous category.
 
+Not every identified failure warrants SOTIF or HARA treatment. A deterministic logic error with low-severity, mission-only consequences and no elevated-risk path is a functional-requirements and verification matter - unit testing, software-in-the-loop, and the standard QA pipeline - not a system hazard analysis item. Such items are noted where relevant with a functional-requirement disposition rather than forced into a category to preserve the appearance of full coverage.
+
 ------------------------------
 ## Assumptions
  
@@ -115,6 +117,74 @@ Each item also carries a Disposition: whether the failure is new content this us
     * Disposition: **Pre-existing** gap (also flagged as icd.md Open Item OI-2), inherited - but now more consequential than before this use case existed, since Trip Manager's egress authorization is a new safety-relevant decision resting on this same unconfirmed-health feed.
 ------------------------------
 ## Route Planner
+
+The anticipatory-search enablement flag (Interface 2) is a deterministic distance/geofence threshold against known position and destination data, not a complex judgment call - a boundary-value error in it is a requirements-and-test matter (specify the threshold precisely, verify it against edge cases in unit/SIL testing), not a SOTIF performance-insufficiency finding. Its consequence is bounded to mission timing (search starts too early or too late), with no direct path to a road-user hazard independent of Behavior Planner's own downstream checks. Likewise, a software defect causing the flag to be set incorrectly is a standard implementation defect, caught by unit testing and the SIL/QA pipeline like any other coding error, not a system-hazard-analysis finding. Neither is carried as a numbered item in this list; both should be captured as explicit functional requirements (a specified threshold value and tolerance, verified by test) rather than elevated here.
+ 
+Route Planner's dependence on a baseline trip-complete signal to distinguish an exhausted search from ordinary trip completion is, similarly, not new stakes this use case introduces. Knowing when a trip has concluded is a fundamental requirement of any routing engine, independent of this feature - this use case is simply one more consumer of a signal that was already load-bearing. This is captured as a functional requirement (Route Planner shall correctly distinguish these two conditions using the existing trip-complete signal) rather than a hazard-analysis item.
+ 
+------------------------------
+## Behavior Planner - Commit / De-Commit Decision Logic
+ 
+20. Behavior Planner commits to a candidate that is obstructed, undersized, or in a restricted zone because the perception or prior-layer input it relied on was itself wrong (Items 2, 5, 7, 9).
+    * Category: SOTIF
+    * Rationale: The decision tree executes correctly on incorrect or insufficient upstream input; the decision logic itself has no fault.
+    * Disposition: New decision logic built on pre-existing, inherited upstream failure modes. The decision tree's node G live recheck (decision-tree-and-se-roadmap.md) is a new, purpose-built mitigation this use case added specifically for the physical-obstruction case; see Item 2's disposition for where that mitigation's coverage ends.
+
+21. Behavior Planner issues commit with insufficient remaining distance to stop comfortably.
+    * Category: SOTIF
+    * Rationale: A timing-margin insufficiency in the decision logic's specified behavior, not a fault.
+    * Disposition: New. No pre-existing coverage - this is Behavior Planner's own new timing logic, and currently unmitigated by any other check.
+
+22. Behavior Planner de-commits prematurely on a single noisy, false-positive obstruction reading.
+    * Category: SOTIF
+    * Rationale: The specified re-check function is operating as designed; its single-cycle sensitivity is the insufficiency the multi-cycle confirmation requirement exists to close.
+    * Disposition: New, but already mitigated by design: this use case's own multi-cycle confirmation requirement, discussed earlier in this analysis, exists specifically to bound this failure mode - an example of a new failure mode that already has a purpose-built mitigation, rather than an open gap.
+
+23. Behavior Planner de-commits too late after a genuine obstruction appears at a committed spot, due to an insufficient re-check cadence.
+    * Category: SOTIF
+    * Rationale: A timing and coverage insufficiency in the specified periodic re-validation, not a malfunction.
+    * Disposition: New, and not mitigated by the multi-cycle confirmation requirement in the same way Item 22 is - that requirement guards against being too eager to de-commit, not against being too slow to react to a genuine, persistent obstruction. This is a real, currently unaddressed gap.
+
+24. Behavior Planner's de-commit decision triggers an abort maneuver without any check that the abort path is clear of a trailing cyclist or adjacent traffic.
+    * Category: SOTIF
+    * Rationale: No component has failed; the intended function of de-commit does not currently specify a clearance check on the resulting maneuver - a genuine gap in the specified function, not a fault in an existing one.
+    * Disposition: New, and explicitly unmitigated - this is the gap identified in the preceding discussion of de-commit-maneuver risk. No existing check covers it.
+
+25. Behavior Planner's process deadlocks or crashes, leaving the vehicle in an indefinite searching state.
+    * Category: HARA
+    * Rationale: Complete loss of a specified function due to a software fault.
+    * Disposition: New - the search/commit state machine itself is new logic, so this specific deadlock mode is new. General process-health monitoring, if any exists at the platform level, is not modeled in this analysis.
+
+26. Behavior Planner's curb clear-length computation contains a units or indexing defect, systematically overestimating available length on correct input data.
+    * Category: HARA
+    * Rationale: A systematic software fault in a specified computation, distinct from Item 20's correct-logic-on-bad-input case.
+    * Disposition: New - this is this use case's own new computation, not inherited from any pre-existing Behavior Planner logic.
+
+------------------------------
+## Behavior Planner → Motion / Path Planner → Vehicle Controls (Execution Chain)
+ 
+27. Motion Planner fails to track Behavior Planner's stop-fence constraint accurately on a difficult curb geometry - a tight radius or adverse camber - within its specified operating envelope.
+    * Category: SOTIF
+    * Rationale: The specified trajectory-generation function is insufficiently robust to a geometry class it was never validated against, not a fault.
+    * Disposition: **Pre-existing** baseline mechanism (Baseline Dependency L, the Behavior Planner-to-Motion Planner interface), inherited. This use case relies on it without modification, per icd.md's own rationale.
+
+28. Motion Planner produces an inaccurate trajectory due to a software defect in constraint interpretation.
+    * Category: HARA
+    * Rationale: A systematic software fault, distinct from Item 27.
+    * Disposition: **Pre-existing**, inherited, same reasoning as Item 27.
+
+29. An actuator command from Motion Planner to Vehicle Controls is dropped or delayed in transit.
+    * Category: HARA
+    * Rationale: A communication path fails to perform its specified function.
+    * Disposition: **Pre-existing** baseline mechanism (Baseline Dependency R), inherited unchanged.
+
+30. Vehicle Controls executes an actuator command after it has passed its intended validity window.
+    * Category: HARA
+    * Rationale: Provisionally classified pending resolution of an open item - no command-freshness requirement currently exists on this interface, so it is not yet possible to confirm whether a given occurrence is a timing fault against a real requirement or reflects a specification gap (see Items Not Yet Classifiable).
+    * Disposition: **Pre-existing** baseline mechanism, inherited - this gap predates and is not introduced by this use case, and is currently unmitigated regardless of root cause, since no freshness requirement exists on this interface at all.
+
+------------------------------
+## Trip Manager - State Aggregation, Rider Negotiation, Routing Escalation
 
 
 ------------------------------
