@@ -185,7 +185,95 @@ Route Planner's dependence on a baseline trip-complete signal to distinguish an 
 
 ------------------------------
 ## Trip Manager - State Aggregation, Rider Negotiation, Routing Escalation
+ 
+31. Trip Manager authorizes egress based on stale ground-truth readings because neither its Localization nor Vehicle Controls input is checked for age before being trusted.
+    * Category: SOTIF
+    * Rationale: Both upstream feeds may be functioning to spec; the aggregation logic's specified behavior simply does not include a staleness check on either input - a gap in the intended function. This is not generic "the code might have a bug" padding: it is the same specific pattern as Item 24 (a named check that the specified function currently omits), on the interface that directly gates egress authorization, the highest-consequence decision in this feature.
+    * Disposition: New. Both the aggregation logic and this gap in it are entirely new content this use case adds to Trip Manager; there is no pre-existing behavior to inherit. This finding is what a staleness-bound functional requirement on Baseline Dependencies P and Q would be written to close - surfacing it here is the reason that requirement gets written, not a substitute for it.
 
+32. Trip Manager's ground-truth comparison logic contains a defect causing it to grant egress authorization independent of the actual tolerance value - for example, comparing against a stale, corrupted, or mismatched stored `committed_location`.
+    * Category: HARA
+    * Rationale: Distinct from a generic "the code might have a bug" concern: Vehicle Controls' own independent zero-speed and clearance checks (Items 36-38 below) confirm the vehicle is currently stopped and the door path is clear, but they do not confirm the vehicle is stopped at the location Behavior Planner's decision tree actually vetted as safe. A wrongful-grant defect here is the one failure mode in this chain with no independent downstream check positioned to catch it specifically.
+    * Disposition: New - Trip Manager's ground-truth comparison logic is new content this use case adds. The withhold-direction case (a genuine stop not recognized due to an overly tight tolerance, or a comparison defect that withholds rather than grants) is not carried as a separate item: it is fail-safe, with only a mission-delay consequence, and is addressed as a calibration/tuning functional requirement rather than a hazard item.
+
+Two further Trip Manager failure modes were considered and are addressed as functional requirements rather than carried as hazard items. A process hang during rider-preference negotiation does not strand the vehicle in an unsafe state: per Baseline Dependency F, Route Planner continues publishing the existing forward path independent of search-escalation status, so a hung negotiation means the vehicle keeps driving its already-valid route rather than holding somewhere unresolved - the consequence is an indefinite mission failure (the rider is never dropped off), an availability concern addressed by a liveness/timeout requirement on the negotiation process, not a road-user hazard. Data corruption on the Trip Manager-to-Route Planner routing directive (Interface 5) is a generic interface-integrity concern rather than content specific to this use case: Trip Manager already sends destination/goal directives to Route Planner as a pre-existing baseline capability (Baseline Dependency O), and the same internal-interface data-integrity assumption stated above applies to it without a separate requirement.
+ 
+------------------------------
+## Rider HMI ↔ Trip Manager
+ 
+Rider preference input misread due to a stuck touchscreen element or an input-debounce fault is a pre-existing cabin-hardware fault, not new logic this use case introduces, and its consequence - a misrouted search-versus-hub decision - is a mission-routing quality issue with no road-user hazard path, unlike Items 17-19 where an inherited failure mode gained a new safety-relevant consequence through this use case. Addressed by the HMI's existing input-validation and fault-detection requirements rather than a new hazard item here.
+ 
+------------------------------
+## Door-Clearance Sensor → Vehicle Controls → Door Actuation (Egress Safety Chain)
+
+33. The Door-Clearance Sensor reports CLEAR while a road user is actually within the clearance envelope.
+    * Category: HARA
+    * Rationale: The sensor fails to perform its specified detection function, undetected - the highest-severity item in this list, since it directly enables an unsafe unlock.
+    * Disposition: New. This project actively specified the Door-Clearance Sensor's technology and role (block-diagram.md Section 4, BD-2) rather than assuming a pre-existing generic capability - treated as new, safety-relevant content requiring its own verification, not something already covered by an existing sensor's HARA elsewhere.
+    
+34. The Door-Clearance Sensor reports BLOCKED while the envelope is actually clear.
+    * Category: HARA
+    * Rationale: A fail-safe-direction malfunction - the sensor stops performing its specified function, but the effect is a stranded rider rather than a hazard to a road user.
+    * Disposition: New, same reasoning as Item 33, fail-safe direction.
+
+35. The Door-Clearance Sensor's detection range or angle degrades from environmental fouling - dirt, ice, or glare on the sensing surface - without raising a fault flag.
+    * Category: SOTIF
+    * Rationale: The sensor is not broken; it is operating within a known weakness of its detection envelope under a foreseeable environmental condition. Whether this sensor can report degraded confidence at all is an open question this classification depends on (see Items Not Yet Classifiable).
+    * Disposition: New, same reasoning as Item 33; unmitigated pending resolution of the open question noted in the rationale.
+    
+36. Vehicle Controls' independent vehicle-state source, used for the zero-speed unlock interlock, stuck-reads zero speed while the vehicle is actually moving.
+    * Category: HARA
+    * Rationale: A dangerous, undetected malfunction of a specified safety-interlock input - the same severity class as Item 33.
+    * Disposition: Pre-existing - the wheel-speed/ABS-class signal itself is baseline vehicle-platform capability, present on every production vehicle for base braking and stability functions, not new hardware this project introduces. This use case gives it a new consequence path: this project's own earlier control-structure analysis newly routes this pre-existing signal into the door-unlock interlock, a use it did not previously have. Same pattern as Items 17-19 - the failure mode is not new, what it can now authorize is.
+
+37. Vehicle Controls' independent vehicle-state source stuck-reads nonzero speed while the vehicle is actually stopped.
+    * Category: HARA
+    * Rationale: A fail-safe-direction malfunction - unlock is delayed, not enabled unsafely.
+    * Disposition: Pre-existing, same reasoning as Item 36, fail-safe direction.
+
+38. Vehicle Controls' unlock logic does not correctly enforce the required combination of egress authorization, zero-speed confirmation, and clearance signal - for example, treating the three as independently sufficient rather than jointly required.
+    * Category: HARA
+    * Rationale: A systematic software fault in the single most safety-critical decision in this feature, where three independent safety arguments converge into one control action. Distinct in kind from Items 33-37: those are failures of an individual input signal (a sensor or source reporting wrong); this is a failure of the arbitration logic itself - all three inputs could be individually correct and this defect would still unlock. Retained as a hazard item rather than folded into a generic functional requirement because nothing sits downstream of this decision to catch it: it is the last check before physical door actuation, with no independent verification after it the way Trip Manager's ground-truth aggregation (Item 32) has Vehicle Controls' own checks after it.
+    * Disposition: New - the interlock logic that combines Trip Manager's authorization, the zero-speed source, and the clearance signal is this project's own recommended safety logic, not pre-existing Vehicle Controls behavior. The functional requirement this drives (an explicit, verified AND of all three conditions) is real and necessary, but the HARA classification is what sets the rigor that requirement must be developed and verified to - dropping the classification would leave the requirement's rigor level undefined, the same reasoning applied to items #1-#3 in the attached pothole HARA rather than treating them as ordinary QM logic.
+
+39. The Door Actuation mechanism jams and fails to unlock when commanded.
+    * Category: HARA
+    * Rationale: A fail-safe-direction actuator malfunction - a mission and availability consequence, not a hazard to a road user.
+    * Disposition: Pre-existing baseline actuator reliability, inherited. This use case does not modify the actuator or its failure modes, only adds new triggering logic upstream of it.
+
+40. The Door Actuation mechanism unlocks or unlatches with no command present, or fails to hold a locked state, while the vehicle is in motion or stopped in a traffic lane.
+    * Category: HARA
+    * Rationale: An uncommanded actuator malfunction with direct occupant and road-hazard consequence.
+    * Disposition: Pre-existing baseline actuator reliability, inherited, same reasoning as Item 39. Its consequence severity is context-dependent - worse if it occurs mid de-commit-abort in a live lane than at a secured curb stop - which is new exposure context this use case introduces even though the failure mode itself is pre-existing.
+
+------------------------------
+## Cross-Cutting
+ 
+41. Vehicle Controls' independent vehicle-state source and the Door-Clearance Sensor share a common power rail or compute node at some point in the implementation, though the design specifies them as independent.
+    * Category: HARA
+    * Rationale: A common-mode fault defeats the independence the door-unlock interlock's safety argument depends on; this item requires verification against the actual implementation, not the block diagram, to resolve.
+    * Disposition: New - this concern exists only because this project's own earlier analysis introduced the independence requirement between these two signals. There is no pre-existing baseline claim of independence to inherit; this needs first-party verification against the actual implementation, not an assumption.
+
+42. A vehicle-platform-level compute or power fault takes down Perception, Localization, and related sensing simultaneously.
+    * Category: HARA
+    * Rationale: Acknowledged as belonging to vehicle-platform fail-operational architecture rather than this use case; included for completeness rather than left silently unaddressed.
+    * Disposition: Pre-existing, out of this use case's scope, inherited and unchanged by this use case.
+
+43. The candidate-evaluation decision tree checks curb-segment length against the vehicle's footprint but does not check lateral or width clearance against a curb-side obstruction - a post, a hydrant, a narrow tree well.
+    * Category: SOTIF
+    * Rationale: Every component functions to specification; the decision tree's intended function simply does not include a lateral-clearance check - a genuine functional gap whose consequence ranges from vehicle damage to, where it also constrains the door-side opening during egress, a road-user or rider hazard. This is the SOTIF pattern, not a coding-defect one: nothing is implemented incorrectly, because nothing was ever specified - the same structure as Item 24 (de-commit's missing abort-path clearance check) and Item 31 (Trip Manager's missing staleness check). The functional requirement to add this check exists only because this analysis surfaced that it was missing; without the finding, no one would know to write it.
+    * Disposition: New - the decision tree itself is new content this use case introduces; there is no pre-existing lateral-clearance check to have inherited or lost.
+    
+------------------------------
+## Items Not Yet Classifiable
+ 
+These failure modes surfaced during this pass but cannot yet be assigned a category, because doing so depends on a design decision or confirmation that has not been made. They are listed here rather than forced into SOTIF or HARA.
+ 
+* A rider who does not respond to the search-preference prompt within the response window, where no default action is defined (icd.md, Open Item OI-9) - this cannot be classified as a failure until a default behavior exists to fail against.
+* Whether the Door-Clearance Sensor can report degraded detection confidence, distinguishing "healthy and clear" from "fouled and unknown" (Item 35) - determines whether environmental fouling is a pure SOTIF performance limitation or also carries a HARA diagnostic-coverage gap.
+* Whether Vehicle Controls' actuator-command consumption has any freshness or validity-window requirement at all (Item 30) - determines whether executing a stale command is a timing fault against a real requirement or reflects a specification gap.
+* Whether the baseline trip-complete signal Route Planner depends on (Route Planner section above) is itself a reliable, specified interface or an informal assumption - icd.md Open Item OI-11 is adjacent to this question.
+* Whether Perception should add a live parking-restriction sign and curb-marking detection path as a redundant input to restriction determination, feeding World Model Builder's restriction_class_channel alongside the Cloud Prior Layer (Item 2) - real-time detection of this content is demonstrated in current research [1], but no such interface exists in this project's architecture today, and adding one is a design decision, not something this document resolves on its own.
 
 ------------------------------
 ## References
