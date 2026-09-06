@@ -17,12 +17,12 @@ Not every identified failure warrants SOTIF or HARA treatment. A deterministic l
 2. Restriction data served to the Prior layer is stale - a new closure, restriction change, or lifted restriction not yet reflected.
    * Category: SOTIF
    * Rationale: The Cloud Prior Layer serves exactly the data it holds, functioning to spec; the insufficiency is the system's reliance on non-real-time data as if current - a known, foreseeable performance limitation, not a malfunction. This is distinct from Items 5 and 6 below: staleness is an inherent latency property of any prefetch-based system, not a cloud-backend content error, so it remains a vehicle-side SOTIF item rather than an out-of-scope backend issue.
-   * Disposition: Behavior Planner's decision tree includes a live-perception recheck (node G, decision_tree.md) that measures actual clear length immediately before commit, independent of the cloud prior data - this catches a stale entry that misstates *physical* clearance. Real-time detection and localization of street parking-restriction signage from a moving vehicle is a demonstrated capability in current perception research - for example, Chau, Jin, Li, Hu, and Cheng demonstrate parking-sign and parking-symbol detection at 163 and 88 frames per second respectively using YOLOv5, at production-relevant accuracy (IJCAI 2022 AI for Autonomous Driving Workshop) - so a live cross-check against legal permissibility is not physically out of reach. What is not yet demonstrated at the same maturity, per that same paper, is full extraction of structured restriction semantics (time windows, permit exceptions) from sign text and delivery of that as an actionable signal to a planner - the authors explicitly flag that step as future work, not a solved, integrated capability. Concretely for this project: Perception is not currently wired into World Model Builder's restriction_class_channel at all (icd.md Interface 1 sources that channel from the Cloud Prior Layer only), so today this remains unmitigated in the deployed architecture regardless of what perception hardware is technically capable of. Whether to add a live sign/curb-marking detection path as a redundant input to restriction determination is a genuine architectural option worth deciding on explicitly, not a closed question - see Items Not Yet Classifiable.
+   * Disposition: Behavior Planner's decision tree includes a live-perception recheck (node G, decision_tree.md) that measures actual clear length immediately before commit, independent of the cloud prior data - this catches a stale entry that misstates *physical* clearance. Real-time detection and localization of street parking-restriction signage from a moving vehicle is a demonstrated capability in current perception research - for example, Chau, Jin, Li, Hu, and Cheng demonstrate parking-sign and parking-symbol detection at 163 and 88 frames per second respectively using YOLOv5, at production-relevant accuracy (IJCAI 2022 AI for Autonomous Driving Workshop) - so a live cross-check against legal permissibility is not physically out of reach. What is not yet demonstrated at the same maturity, per that same paper, is full extraction of structured restriction semantics (time windows, permit exceptions) from sign text and delivery of that as an actionable signal to a planner - the authors explicitly flag that step as future work, not a solved, integrated capability. Concretely for this project: Perception is not currently wired into World Model Builder's restriction_class_channel at all (interface_control_document.md Interface 1 sources that channel from the Cloud Prior Layer only), so today this remains unmitigated in the deployed architecture regardless of what perception hardware is technically capable of. Whether to add a live sign/curb-marking detection path as a redundant input to restriction determination is a genuine architectural option worth deciding on explicitly, not a closed question - see Items Not Yet Classifiable.
 
 3. Restriction-class prefetch fails to complete before the anticipatory-search trigger is reached, due to a network or hardware fault interrupting the transfer.
    * Category: HARA
    * Rationale: An external communication path fails to perform its specified function.
-   * Disposition: New, and currently unmitigated. icd.md Open Item OI-1 leaves both the staleness bound and the resulting degraded-mode behavior undefined - there is no stated fallback for a total prefetch failure. This differs from Item 2: node G's live recheck only ever validates physical clearance, and a total prefetch failure removes restriction-class data entirely, not just ages it.
+   * Disposition: New, and currently unmitigated. interface_control_document.md Open Item OI-1 leaves both the staleness bound and the resulting degraded-mode behavior undefined - there is no stated fallback for a total prefetch failure. This differs from Item 2: node G's live recheck only ever validates physical clearance, and a total prefetch failure removes restriction-class data entirely, not just ages it.
 
 4. Restriction-class prefetch fails to complete because the vehicle is operating in a low-connectivity pocket of the ODD, a foreseeable condition in dense urban cores.
    * Category: SOTIF
@@ -86,7 +86,7 @@ Not every identified failure warrants SOTIF or HARA treatment. A deterministic l
 14. World Model Builder misaligns the static prior grid and live occupancy layers due to a coordinate-frame transformation defect.
     * Category: HARA
     * Rationale: A systematic software fault in a specified fusion function.
-    * Disposition: **Pre-existing** World Model Builder fusion-mechanism risk, inherited. Interface 1's restriction-class channel shares World Model Builder's existing grid_metadata/origin handling rather than introducing a separate fusion pathway (icd.md Interface 1), so this defect class is not newly introduced by this use case, though the new channel is one more thing affected if it occurs.
+    * Disposition: **Pre-existing** World Model Builder fusion-mechanism risk, inherited. Interface 1's restriction-class channel shares World Model Builder's existing grid_metadata/origin handling rather than introducing a separate fusion pathway (interface_control_document.md Interface 1), so this defect class is not newly introduced by this use case, though the new channel is one more thing affected if it occurs.
 
 15. World Model Builder hangs and continues republishing its last fused frame, with no freshness or health indicator available downstream.
     * Category: HARA
@@ -114,7 +114,7 @@ Not every identified failure warrants SOTIF or HARA treatment. A deterministic l
 19. Localization's pose output freezes due to a process fault, with no validity or health signal available to downstream consumers to detect it.
     * Category: HARA
     * Rationale: A malfunction compounded by the same diagnosability gap as Item 15 - neither of the system's two primary fusion-input feeds currently carries a confirmed health signal.
-    * Disposition: **Pre-existing** gap (also flagged as icd.md Open Item OI-2), inherited - but now more consequential than before this use case existed, since Trip Manager's egress authorization is a new safety-relevant decision resting on this same unconfirmed-health feed.
+    * Disposition: **Pre-existing** gap (also flagged as interface_control_document.md Open Item OI-2), inherited - but now more consequential than before this use case existed, since Trip Manager's egress authorization is a new safety-relevant decision resting on this same unconfirmed-health feed.
 ------------------------------
 ## Route Planner
 
@@ -128,7 +128,7 @@ Route Planner's dependence on a baseline trip-complete signal to distinguish an 
 20. Behavior Planner commits to a candidate that is obstructed, undersized, or in a restricted zone because the perception or prior-layer input it relied on was itself wrong (Items 2, 5, 7, 9).
     * Category: SOTIF
     * Rationale: The decision tree executes correctly on incorrect or insufficient upstream input; the decision logic itself has no fault.
-    * Disposition: New decision logic built on pre-existing, inherited upstream failure modes. The decision tree's node G live recheck (decision-tree-and-se-roadmap.md) is a new, purpose-built mitigation this use case added specifically for the physical-obstruction case; see Item 2's disposition for where that mitigation's coverage ends.
+    * Disposition: New decision logic built on pre-existing, inherited upstream failure modes. The decision tree's node G live recheck (decision_tree.md) is a new, purpose-built mitigation this use case added specifically for the physical-obstruction case; see Item 2's disposition for where that mitigation's coverage ends.
 
 21. Behavior Planner issues commit with insufficient remaining distance to stop comfortably.
     * Category: SOTIF
@@ -166,7 +166,7 @@ Route Planner's dependence on a baseline trip-complete signal to distinguish an 
 27. Motion Planner fails to track Behavior Planner's stop-fence constraint accurately on a difficult curb geometry - a tight radius or adverse camber - within its specified operating envelope.
     * Category: SOTIF
     * Rationale: The specified trajectory-generation function is insufficiently robust to a geometry class it was never validated against, not a fault.
-    * Disposition: **Pre-existing** baseline mechanism (Baseline Dependency L, the Behavior Planner-to-Motion Planner interface), inherited. This use case relies on it without modification, per icd.md's own rationale.
+    * Disposition: **Pre-existing** baseline mechanism (Baseline Dependency L, the Behavior Planner-to-Motion Planner interface), inherited. This use case relies on it without modification, per interface_control_document.md's own rationale.
 
 28. Motion Planner produces an inaccurate trajectory due to a software defect in constraint interpretation.
     * Category: HARA
@@ -209,7 +209,7 @@ Rider preference input misread due to a stuck touchscreen element or an input-de
 33. The Door-Clearance Sensor reports CLEAR while a road user is actually within the clearance envelope.
     * Category: HARA
     * Rationale: The sensor fails to perform its specified detection function, undetected - the highest-severity item in this list, since it directly enables an unsafe unlock.
-    * Disposition: New. This project actively specified the Door-Clearance Sensor's technology and role (block-diagram.md Section 4, BD-2) rather than assuming a pre-existing generic capability - treated as new, safety-relevant content requiring its own verification, not something already covered by an existing sensor's HARA elsewhere.
+    * Disposition: New. This project actively specified the Door-Clearance Sensor's technology and role (system_architecture.md Section 4, BD-2) rather than assuming a pre-existing generic capability - treated as new, safety-relevant content requiring its own verification, not something already covered by an existing sensor's HARA elsewhere.
     
 34. The Door-Clearance Sensor reports BLOCKED while the envelope is actually clear.
     * Category: HARA
@@ -269,10 +269,10 @@ Rider preference input misread due to a stuck touchscreen element or an input-de
  
 These failure modes surfaced during this pass but cannot yet be assigned a category, because doing so depends on a design decision or confirmation that has not been made. They are listed here rather than forced into SOTIF or HARA.
  
-* A rider who does not respond to the search-preference prompt within the response window, where no default action is defined (icd.md, Open Item OI-9) - this cannot be classified as a failure until a default behavior exists to fail against.
+* A rider who does not respond to the search-preference prompt within the response window, where no default action is defined (interface_control_document.md, Open Item OI-9) - this cannot be classified as a failure until a default behavior exists to fail against.
 * Whether the Door-Clearance Sensor can report degraded detection confidence, distinguishing "healthy and clear" from "fouled and unknown" (Item 35) - determines whether environmental fouling is a pure SOTIF performance limitation or also carries a HARA diagnostic-coverage gap.
 * Whether Vehicle Controls' actuator-command consumption has any freshness or validity-window requirement at all (Item 30) - determines whether executing a stale command is a timing fault against a real requirement or reflects a specification gap.
-* Whether the baseline trip-complete signal Route Planner depends on (Route Planner section above) is itself a reliable, specified interface or an informal assumption - icd.md Open Item OI-11 is adjacent to this question.
+* Whether the baseline trip-complete signal Route Planner depends on (Route Planner section above) is itself a reliable, specified interface or an informal assumption - interface_control_document.md Open Item OI-11 is adjacent to this question.
 * Whether Perception should add a live parking-restriction sign and curb-marking detection path as a redundant input to restriction determination, feeding World Model Builder's restriction_class_channel alongside the Cloud Prior Layer (Item 2) - real-time detection of this content is demonstrated in current research [1], but no such interface exists in this project's architecture today, and adding one is a design decision, not something this document resolves on its own.
 
 ------------------------------
