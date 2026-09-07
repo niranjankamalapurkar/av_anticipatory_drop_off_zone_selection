@@ -4,7 +4,7 @@ This patent describes process to select optimal pull-over location by assigning 
 
 ## Patent US20220326711A1 - Evaluating pullovers for autonomous vehicles
 
-This patent proposes a simulation framework to evaluate how vehicle control performs for a pull-over. That way, developers can assess whether changes introduces improves or degrades pull-over performance. 
+This patent proposes a simulation framework to evaluate how vehicle control performs for a pull-over. That way, developers can assess whether the system or algorithm update improves or degrades pull-over performance. 
 
 ## Patent US11034351B2 - Planning stopping locations for autonomous vehicles
 
